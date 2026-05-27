@@ -27,7 +27,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train ViT on MIT Indoor Scenes subset.")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default=None)
-    parser.add_argument("--project", type=str, default="csc4005-lab6-mit-indoor-vit")
+    parser.add_argument("--project", type=str, default="csc4005-lab5-mit-indoor-vit")
     parser.add_argument("--run_name", type=str, default="vit_b16_head_only")
     parser.add_argument("--model_name", type=str, default="vit_b_16")
     parser.add_argument("--train_mode", type=str, choices=["head_only", "finetune"], default="head_only")
@@ -47,6 +47,12 @@ def parse_args():
     parser.add_argument("--augment", action="store_true")
     parser.add_argument("--no_pretrained", action="store_true")
     parser.add_argument("--use_wandb", action="store_true")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Device to use: auto, cpu, cuda, cuda:0, cuda:1, ...",
+    )
     return parser.parse_args()
 
 
@@ -58,6 +64,16 @@ def load_config_into_args(args):
         if hasattr(args, key):
             setattr(args, key, value)
     return args
+
+
+def resolve_device(device_arg: str) -> torch.device:
+    if device_arg == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    device = torch.device(device_arg)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA was requested with --device, but PyTorch cannot see a CUDA GPU.")
+    return device
 
 
 @torch.no_grad()
@@ -87,7 +103,12 @@ def main() -> None:
         raise ValueError("Please provide --data_dir pointing to MIT Indoor Scenes subset.")
 
     set_seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device(args.device)
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
+        print(f"Using GPU: {torch.cuda.get_device_name(device)} ({device})")
+    else:
+        print(f"Using device: {device}")
 
     output_dir = ensure_dir(Path("outputs") / args.run_name)
     save_json(vars(args), output_dir / "config.json")
